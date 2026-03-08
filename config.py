@@ -1,0 +1,19 @@
+ROWS = 20
+COLS = 20
+CELL_SIZE = 24
+
+HUMAN_FPS = 7
+BOT_FPS = 500
+
+UP = (-1, 0)
+DOWN = (1, 0)
+LEFT = (0, -1)
+RIGHT = (0, 1)
+
+ACTIONS = [UP, DOWN, LEFT, RIGHT]
+ACTION_NAMES = {
+    UP: "UP",
+    DOWN: "DOWN",
+    LEFT: "LEFT",
+    RIGHT: "RIGHT",
+}
