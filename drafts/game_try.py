@@ -51,31 +51,16 @@ def spawn_food(snake, rows, cols):
 def random_loc(rows, cols):
     return random.randint(0, cols-1), random.randint(0, rows-1)
 
-def a_star(start, target, tail, grid, graph, obstacles):
-    """
-    Uses a_star heuristic to find a path from start to target and back to tail.
-    If such a path exists, return the path from start to target.
-    
-    If such a path does not exist, returns a path from start to tail.
-    
-    Cannot revisit the same node twice and cannot step on obstacles if obstacles[node] < k
-    where k is the number of steps taken so far.
-    
-    Having a hashmap of obstacles allows for O(1) lookup times to see if a node is taken and
-    allows us to account for the snake's tail moving as we take steps forward without actually
-    updating the datastucture.
-    """
-    pass
-
 class PQNode:
-    def __init__(self, heuristic, position, visited, steps):
+    def __init__(self, heuristic, position, visited, steps, counter):
         self.h = heuristic
         self.p = position
         self.v = visited
         self.s = steps
+        self.c = counter
         
     def __lt__(self, other):
-        return self.h < other.h
+        return (self.h, len(self.v)) < (other.h, len(other.v))
 
 class PathFinder:
     """
@@ -91,6 +76,7 @@ class PathFinder:
         self.tail = tail
         self.obstacles = obstacles
         self.steps = steps
+        self.found_food = False
         
     def is_path_to_tail(self, start, visited, steps):
         """
@@ -100,47 +86,49 @@ class PathFinder:
         
         Return True if a path exists from start to self.tail.
         """
-        q = [(start, steps)]
+        q = [(start, steps, visited)]
         while q:
             next_level = []
-            for p, s in q:
+            for p, s, visited in q:
                 for neigh in graph[p]:
                     if neigh == self.tail:
                         return True
                     
-                    if neigh not in visited and self.obstacles[neigh] <= s:
-                        visited[neigh] = -1
-                        next_level.append((neigh, s+1))
+                    if neigh not in visited[-len(self.obstacles):] and self.obstacles[neigh] <= s:
+                        v = visited[:]
+                        v.append(neigh)
+                        next_level.append((neigh, s+1, v))
             q = next_level
         return False
     
     def exhaustive_search(self):
         node = PQNode(self.heuristic(self.start, self.start, self.target),
-                      self.start,
-                      collections.defaultdict(int),
-                      self.steps)
-        q = [node] # (h) heuristic, (p) position, (v) visited, (s) steps taken - offset included
+                      self.start, [], self.steps, collections.defaultdict(int))
+        q = [node] # (h) heuristic, (p) position, (v) visited path, (s) steps taken - offset included, (c) count for each space
         while q:
             node = heapq.heappop(q)
-            h, p, v, s = node.h, node.p, node.v, node.s
+            p, v, s, c = node.p, node.v, node.s, node.c
             
             # if we reached the food, check if a path exists from food to tail
             if p == self.target:
-                #print(p, v, self.is_path_to_tail(p, v.copy(), s), sep='\n')
                 if self.is_path_to_tail(p, v.copy(), s):
-                    v[self.target] = -1
+                    v.append(self.target)
+                    self.found_food = True
                     return v
             
             for neigh in graph[p]:
-                if (neigh not in v) and self.obstacles[neigh] <= s:
+                if (neigh not in v[-len(self.obstacles):]) and (self.obstacles[neigh] <= s) and (c[neigh] < 2):
                     v_ = v.copy()
-                    v_[p] = neigh
-                    v_[neigh] = -1
+                    v_.append(neigh)
+                    c_ = c.copy()
+                    c_[neigh] += 1
                     next_node = PQNode(self.heuristic(neigh, self.start, self.target),
                                        neigh,
                                        v_,
-                                       s + 1)
-                    heapq.heappush(q, (next_node))
+                                       s + 1,
+                                       c_
+                                       )
+                    heapq.heappush(q, next_node)
         
         # No safe path to food and back to tail was found, find path directly to tail
         self.target = self.tail
@@ -184,21 +172,15 @@ class Snake():
         """Finds a safe path for the snake to reach food from the current position."""
         solver = PathFinder(self.pos, food, self.tail, self.obstacles, self.steps)
         v = solver.exhaustive_search()
+        self.safe_path = v
         print(v, self.pos)
-        self._update_safe_path(self.pos, v)
         
     def _seek_path_to_tail(self, tail_return):
         """Finds a safe path for the snake to reach tail from the current position."""
         solver = PathFinder(self.pos, tail_return, self.tail, self.obstacles, self.steps)
         v = solver.exhaustive_search()
         print(v, self.pos)
-        self._update_safe_path(self.pos, v)
-        
-    def _update_safe_path(self, pos, v):
-        self.safe_path = []
-        while pos != -1:
-            self.safe_path.append(pos)
-            pos = v[pos]
+        self.safe_path = v
         
     def _follow_safe_path(self):
         self.body.appendleft(self.safe_path[0]) # add new head
@@ -227,8 +209,8 @@ if __name__ == "__main__":
     
     config = {"WIDTH": 800,
                 "HEIGHT": 800,
-                "ROWS": 20,
-                "COLUMNS": 20,
+                "ROWS": 6,
+                "COLUMNS": 6,
                 "SLEEP_TIME": 0,
                 "LOCK_TIME": 0.2
                 }
@@ -254,7 +236,7 @@ if __name__ == "__main__":
                 graph[b].append(a)
     
     show_grid(s, R, C)
-    for _ in range(40):
+    for _ in range(30):
         s.step()
         spawn_food(s, R, C)
         show_grid(s, R, C)
